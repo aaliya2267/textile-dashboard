@@ -1,6 +1,8 @@
 import streamlit as st
 import pandas as pd
 from sklearn.linear_model import LinearRegression
+import plotly.express as px
+from fpdf import FPDF
 
 # =====================================
 # PAGE SETTINGS
@@ -81,18 +83,29 @@ else:
     # Read Data
     # ---------------------------------
 
-    data = pd.read_csv(uploaded_file)
+    @st.cache_data
+    def load_data(file):
+        return pd.read_csv(file)
+
+    try:
+        data = load_data(uploaded_file)
+    except Exception as e:
+        st.error(f"Error reading CSV: {e}")
+        st.stop()
 
     # ---------------------------------
     # Machine Learning Model
     # ---------------------------------
 
-    X = data[["Month"]]
-    y = data["Sales"]
+    @st.cache_resource
+    def train_model(df):
+        X = df[["Month"]]
+        y = df["Sales"]
+        m = LinearRegression()
+        m.fit(X, y)
+        return m
 
-    model = LinearRegression()
-
-    model.fit(X, y)
+    model = train_model(data)
 
     next_month = data["Month"].max() + 1
 
@@ -150,13 +163,16 @@ else:
             f"₹{profit}"
         )
 
-        st.subheader("📈 Monthly Sales Chart")
+        tab1, tab2 = st.tabs(["📊 Dashboard Overview", "📋 Raw Data"])
 
-        st.line_chart(data["Sales"])
+        with tab1:
+            st.subheader("📈 Monthly Sales Chart")
+            fig = px.line(data, x="Month", y="Sales", markers=True, title="Monthly Sales Trend")
+            st.plotly_chart(fig, use_container_width=True)
 
-        st.subheader("📋 Sales Data")
-
-        st.dataframe(data)
+        with tab2:
+            st.subheader("📋 Sales Data")
+            st.dataframe(data)
 
     # =====================================
     # PREDICTION PAGE
@@ -308,19 +324,65 @@ else:
                 lowest_sales
             )
 
-        st.subheader("📋 Dataset Used")
-
-        st.dataframe(data)
-
         st.subheader("📊 Sales Bar Chart")
+        fig_bar = px.bar(data, x="Month", y="Sales", title="Sales by Month", color="Sales", color_continuous_scale="Blues")
+        st.plotly_chart(fig_bar, use_container_width=True)
 
-        st.bar_chart(data["Sales"])
+        st.subheader("📋 Dataset Used")
+        with st.expander("View Raw Data"):
+            st.dataframe(data)
 
-        # Download CSV
+        # Download PDF
+        def generate_pdf():
+            pdf = FPDF()
+            pdf.add_page()
+            
+            # Header
+            pdf.set_fill_color(30, 30, 47)
+            pdf.set_text_color(255, 255, 255)
+            pdf.set_font("Helvetica", 'B', 24)
+            pdf.cell(0, 15, text="Professional Sales Report", border=0, align='C', fill=True, new_x="LMARGIN", new_y="NEXT")
+            pdf.ln(10)
+            
+            # Executive Summary
+            pdf.set_text_color(0, 0, 0)
+            pdf.set_font("Helvetica", 'B', 14)
+            pdf.cell(0, 10, text="Executive Summary", new_x="LMARGIN", new_y="NEXT")
+            pdf.set_font("Helvetica", size=12)
+            
+            pdf.cell(95, 10, text=f"Total Sales: {total_sales}", border=1)
+            pdf.cell(95, 10, text=f"Average Sales: {round(average_sales, 2)}", border=1, new_x="LMARGIN", new_y="NEXT")
+            pdf.cell(95, 10, text=f"Highest Sales: {highest_sales}", border=1)
+            pdf.cell(95, 10, text=f"Lowest Sales: {lowest_sales}", border=1, new_x="LMARGIN", new_y="NEXT")
+            pdf.ln(10)
+            
+            # Table Header
+            pdf.set_fill_color(75, 108, 183)
+            pdf.set_text_color(255, 255, 255)
+            pdf.set_font("Helvetica", 'B', 12)
+            pdf.cell(95, 10, text="Month", border=1, align='C', fill=True)
+            pdf.cell(95, 10, text="Sales Volume", border=1, align='C', fill=True, new_x="LMARGIN", new_y="NEXT")
+            
+            # Table Data
+            pdf.set_text_color(0, 0, 0)
+            pdf.set_font("Helvetica", size=12)
+            for i in range(len(data)):
+                # Alternating row colors
+                if i % 2 == 0:
+                    pdf.set_fill_color(245, 247, 250)
+                else:
+                    pdf.set_fill_color(255, 255, 255)
+                    
+                pdf.cell(95, 10, text=str(data.iloc[i]['Month']), border=1, align='C', fill=True)
+                pdf.cell(95, 10, text=str(data.iloc[i]['Sales']), border=1, align='C', fill=True, new_x="LMARGIN", new_y="NEXT")
+                
+            return bytes(pdf.output())
+
+        pdf_bytes = generate_pdf()
 
         st.download_button(
-            label="⬇ Download Dataset",
-            data=data.to_csv(index=False),
-            file_name="sales_report.csv",
-            mime="text/csv"
+            label="⬇ Download PDF Report",
+            data=pdf_bytes,
+            file_name="sales_report.pdf",
+            mime="application/pdf"
         )
