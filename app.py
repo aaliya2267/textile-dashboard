@@ -160,11 +160,19 @@ else:
     # ---------------------------------
 
     uploaded_file = st.sidebar.file_uploader(
-        "📁 Upload Custom CSV (optional)",
+        "📁 Upload CSV File (Month, Sales)",
         type=["csv"],
-        help="Leave empty to use the default Bapuji Textile sales data"
+        help="Upload a dataset with 'Month' and 'Sales' columns"
     )
-    st.sidebar.caption("💡 Default data loads automatically if no file is uploaded.")
+
+    if uploaded_file is None:
+        st.markdown(f"""
+        <div class="company-header">
+            <h1>🧵 {COMPANY_NAME}</h1>
+            <p>Upload a CSV file in the sidebar to generate the analytics dashboard.</p>
+        </div>
+        """, unsafe_allow_html=True)
+        st.stop()
 
     # ---------------------------------
     # Read & Validate Data
@@ -177,16 +185,8 @@ else:
         df = pd.read_csv(file)
         return df
 
-    @st.cache_data
-    def load_default_data():
-        default_path = os.path.join(os.path.dirname(__file__), "sales_data.csv")
-        return pd.read_csv(default_path)
-
     try:
-        if uploaded_file is not None:
-            data = load_data(uploaded_file)
-        else:
-            data = load_default_data()
+        data = load_data(uploaded_file)
     except Exception as e:
         st.error(f"❌ Error reading CSV: {e}")
         st.stop()
